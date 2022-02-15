@@ -13,7 +13,8 @@ use serenity::{async_trait, model::gateway::Ready, prelude::*};
 enum HandlerError {
     #[error("some serenity error")]
     SerenityError(#[from] SerenityError),
-    #[error("something else")]
+    #[error("something else: {0}")]
+    SomethingElse(String),
 }
 
 struct VoiceChatData {
@@ -49,7 +50,9 @@ impl EventHandler for Handler {
     ) {
         let result = || async {
             if old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id {
-                let channel_id = new.channel_id.ok_or(HandlerError::SomethingElse)?;
+                let channel_id = new.channel_id.ok_or(HandlerError::SomethingElse(
+                    "Could not get new.channel_id".to_string(),
+                ))?;
 
                 if let Channel::Guild(_) = channel_id.to_channel(&ctx.http).await? {
                     let mut data = ctx.data.write().await;
