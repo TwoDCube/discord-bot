@@ -9,23 +9,11 @@ use serenity::model::id::{ChannelId, GuildId};
 use serenity::model::voice::VoiceState;
 use serenity::{async_trait, model::gateway::Ready, prelude::*};
 
-use std::future::Future;
-
 #[derive(Debug, thiserror::Error)]
 enum HandlerError {
     #[error("some serenity error")]
     SerenityError(#[from] SerenityError),
     #[error("something else")]
-    SomethingElse,
-}
-
-fn wrap_handler<F, Fut>(f: F) -> Fut
-where
-    F: Fn() -> Fut,
-    Fut: Future + Send,
-    Fut::Output: Send,
-{
-    f()
 }
 
 struct VoiceChatData {
@@ -59,7 +47,7 @@ impl EventHandler for Handler {
         old: Option<VoiceState>,
         new: VoiceState,
     ) {
-        let result = wrap_handler(|| async {
+        let result = || async {
             if old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id {
                 let channel_id = new.channel_id.ok_or(HandlerError::SomethingElse)?;
 
@@ -101,10 +89,9 @@ impl EventHandler for Handler {
                 }
             }
             Ok::<_, HandlerError>(())
-        })
-        .await;
+        };
 
-        if let Err(err) = result {
+        if let Err(err) = result().await {
             todo!("implement error: {}", err);
         }
     }
