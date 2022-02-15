@@ -50,25 +50,23 @@ impl EventHandler for Handler {
     ) {
         let result = || async {
             if old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id {
-                let channel_id = new.channel_id.ok_or(HandlerError::SomethingElse(
-                    "Could not get new.channel_id".to_string(),
-                ))?;
+                if let Some(channel_id) = new.channel_id {
+                    if let Channel::Guild(_) = channel_id.to_channel(&ctx.http).await? {
+                        let mut data = ctx.data.write().await;
+                        let voice_data = data
+                            .get_mut::<VoiceChat>()
+                            .expect("somehow didn't find, developer is stupid");
 
-                if let Channel::Guild(_) = channel_id.to_channel(&ctx.http).await? {
-                    let mut data = ctx.data.write().await;
-                    let voice_data = data
-                        .get_mut::<VoiceChat>()
-                        .expect("somehow didn't find, developer is stupid");
+                        if voice_data.last_channel_id == channel_id {
+                            let channel = guild
+                                .unwrap()
+                                .create_channel(&ctx.http, channel_creator(voice_data.next_channel_id))
+                                .await?;
 
-                    if voice_data.last_channel_id == channel_id {
-                        let channel = guild
-                            .unwrap()
-                            .create_channel(&ctx.http, channel_creator(voice_data.next_channel_id))
-                            .await?;
-
-                        println!("joined");
-                        voice_data.next_channel_id += 1;
-                        voice_data.last_channel_id = channel.id;
+                            println!("joined");
+                            voice_data.next_channel_id += 1;
+                            voice_data.last_channel_id = channel.id;
+                        }
                     }
                 }
             }
