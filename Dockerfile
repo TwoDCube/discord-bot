@@ -9,7 +9,7 @@ RUN cargo build --release && \
     rm -rf ./src
 
 COPY src ./src
-RUN rm target/release/deps/discord-bot* && \
+RUN rm target/release/deps/discord_bot* && \
     cargo build --release
 
 FROM alpine
