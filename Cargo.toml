@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 serenity = { version="0.10", default-features=false, features = ["client", "gateway", "rustls_backend", "model", "cache"] }
 tokio = { version="1.16.1", features=["rt-multi-thread", "macros"]}
+thiserror = "1.0.30"

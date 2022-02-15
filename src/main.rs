@@ -1,19 +1,36 @@
-use std::{env, time};
 use std::sync::Arc;
-use std::sync::atomic::AtomicU32;
+use std::{env, time};
 
 use serenity::model::channel::{Channel, ChannelType};
 
+use serenity::builder::CreateChannel;
 use serenity::model::guild::Guild;
 use serenity::model::id::{ChannelId, GuildId};
 use serenity::model::voice::VoiceState;
 use serenity::{async_trait, model::gateway::Ready, prelude::*};
-use serenity::builder::CreateChannel;
-use serenity::model::channel::ChannelType::Voice;
+
+use std::future::Future;
+
+#[derive(Debug, thiserror::Error)]
+enum HandlerError {
+    #[error("some serenity error")]
+    SerenityError(#[from] SerenityError),
+    #[error("something else")]
+    SomethingElse,
+}
+
+fn wrap_handler<F, Fut>(f: F) -> Fut
+where
+    F: Fn() -> Fut,
+    Fut: Future + Send,
+    Fut::Output: Send,
+{
+    f()
+}
 
 struct VoiceChatData {
     next_channel_id: u128,
-    last_channel_id: ChannelId
+    last_channel_id: ChannelId,
 }
 struct VoiceChat;
 
@@ -42,63 +59,53 @@ impl EventHandler for Handler {
         old: Option<VoiceState>,
         new: VoiceState,
     ) {
-        if old.is_none() || old.as_ref().expect("").channel_id != new.channel_id {
-            if let Some(channel_id) = new.channel_id {
-                match channel_id.to_channel(&ctx.http).await {
-                    Ok(c) => {
-                        match c {
-                            Channel::Guild(_gc) => {
-                                let mut data = ctx.data.write().await;
-                                let voice_data = data.get_mut::<VoiceChat>().expect("somehow didnt find, developer is stupid");
-                                if voice_data.last_channel_id == channel_id {
-                                    match guild.expect("guild nil").create_channel(&ctx.http, channel_creator(voice_data.next_channel_id)).await {
-                                        Ok(channel) => {
-                                            println!("joined");
-                                            voice_data.next_channel_id+=1;
-                                            voice_data.last_channel_id = channel.id;
-                                        }
-                                        Err(_) => {todo!()}
-                                    }
+        let result = wrap_handler(|| async {
+            if old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id {
+                let channel_id = new.channel_id.ok_or(HandlerError::SomethingElse)?;
 
-                                }
+                if let Channel::Guild(_) = channel_id.to_channel(&ctx.http).await? {
+                    let mut data = ctx.data.write().await;
+                    let voice_data = data
+                        .get_mut::<VoiceChat>()
+                        .expect("somehow didn't find, developer is stupid");
 
-                            }
-                            Channel::Private(_) => {todo!()}
-                            Channel::Category(_) => {todo!()}
-                            _ => {todo!()}
-                        }
-                    }
-                    Err(_) => { todo!()                    }
-                }
-            }
-        }
-        if let Some(VoiceState{channel_id: Some(channel_id), ..}) = old {
-            match channel_id.to_channel(&ctx.http).await {
-                Ok(c) => {
-                    match c {
-                        Channel::Guild(gc) => {
-                            if gc.category_id.unwrap_or_default().0 != 941469281730838578 {
-                                return
-                            }
-                            match gc.members(&ctx.cache).await {
-                                Ok(members) => {
-                                    if members.len() == 0 {
-                                        match gc.delete(&ctx.http).await {
-                                            Ok(_) => {println!("removed")}
-                                            Err(_) => {todo!()}
-                                        }
-                                    }
-                                }
-                                Err(_) => {todo!()}
-                            }
-                        }
-                        Channel::Private(_) => {todo!()}
-                        Channel::Category(_) => {todo!()}
-                        _ => {todo!()}
+                    if voice_data.last_channel_id == channel_id {
+                        let channel = guild
+                            .unwrap()
+                            .create_channel(&ctx.http, channel_creator(voice_data.next_channel_id))
+                            .await?;
+
+                        println!("joined");
+                        voice_data.next_channel_id += 1;
+                        voice_data.last_channel_id = channel.id;
                     }
                 }
-                Err(_) => {todo!()}
             }
+
+            if let Some(VoiceState {
+                channel_id: Some(channel_id),
+                ..
+            }) = old
+            {
+                if let Channel::Guild(gc) = channel_id.to_channel(&ctx.http).await? {
+                    if gc.category_id != Some(ChannelId(941469281730838578)) {
+                        return Ok(());
+                    }
+
+                    let members = gc.members(&ctx.cache).await?;
+
+                    if members.is_empty() {
+                        gc.delete(&ctx.http).await?;
+                        println!("removed");
+                    }
+                }
+            }
+            Ok::<_, HandlerError>(())
+        })
+        .await;
+
+        if let Err(err) = result {
+            todo!("implement error: {}", err);
         }
     }
 }
@@ -130,7 +137,7 @@ async fn main() {
         .expect("cannot get channels")
         .iter()
     {
-        if c.category_id.unwrap_or_default().0 == 941469281730838578 && c.kind == ChannelType::Voice {
+        if c.category_id == Some(ChannelId(941469281730838578)) && c.kind == ChannelType::Voice {
             c.delete(&client.cache_and_http.http)
                 .await
                 .expect("delete failed");
@@ -140,8 +147,9 @@ async fn main() {
     let last_channel_id = guild
         .create_channel(&client.cache_and_http.http, channel_creator(0))
         .await
-        .expect("cannot create channel").id;
-   {
+        .expect("cannot create channel")
+        .id;
+    {
         let mut data = client.data.write().await;
 
         data.insert::<VoiceChat>(VoiceChatData {
@@ -159,18 +167,19 @@ async fn main() {
                 .expect("cannot get channels")
                 .iter()
             {
-                if c.category_id.unwrap_or_default().0 == 941469281730838578 && c.kind == ChannelType::Voice {
+                if c.category_id == Some(ChannelId(941469281730838578))
+                    && c.kind == ChannelType::Voice
+                {
                     match c.members(&cache_and_http.cache).await {
                         Ok(members) => {
-                            if members.len() == 0 {
-                                c.delete(&cache_and_http.http)
-                                    .await
-                                    .expect("delete failed");
+                            if members.is_empty() {
+                                c.delete(&cache_and_http.http).await.expect("delete failed");
                             }
                         }
-                        Err(_) => {todo!()}
+                        Err(_) => {
+                            todo!()
+                        }
                     }
-
                 }
             }
 
