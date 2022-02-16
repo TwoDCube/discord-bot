@@ -107,7 +107,7 @@ async fn main() {
         .await
         .expect("Err creating client");
 
-    let voice_manager = VoiceManager::new(&client);
+    let voice_manager = VoiceManager::new(&client).await;
 
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
