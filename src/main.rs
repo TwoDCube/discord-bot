@@ -1,13 +1,14 @@
-use std::sync::Arc;
-use std::{env, time};
+mod voice_manager;
 
+use std::{env};
 use serenity::model::channel::{Channel, ChannelType};
-
 use serenity::builder::CreateChannel;
-use serenity::model::guild::Guild;
 use serenity::model::id::{ChannelId, GuildId};
 use serenity::model::voice::VoiceState;
-use serenity::{async_trait, model::gateway::Ready, prelude::*};
+use serenity::{async_trait, Client, model::gateway::Ready};
+use serenity::client::{Context, EventHandler};
+use serenity::prelude::{SerenityError};
+use crate::voice_manager::{VoiceManager, VoiceChat};
 
 #[derive(Debug, thiserror::Error)]
 enum HandlerError {
@@ -15,16 +16,6 @@ enum HandlerError {
     SerenityError(#[from] SerenityError),
     #[error("something else: {0}")]
     SomethingElse(String),
-}
-
-struct VoiceChatData {
-    next_channel_id: u128,
-    last_channel_id: ChannelId,
-}
-struct VoiceChat;
-
-impl TypeMapKey for VoiceChat {
-    type Value = VoiceChatData;
 }
 
 struct Handler;
@@ -116,64 +107,7 @@ async fn main() {
         .await
         .expect("Err creating client");
 
-    let guild = Guild::get(&client.cache_and_http.http, 941431307269963877)
-        .await
-        .expect("cannot get guild");
-    for (_id, c) in guild
-        .channels(&client.cache_and_http.http)
-        .await
-        .expect("cannot get channels")
-        .iter()
-    {
-        if c.category_id == Some(ChannelId(941469281730838578)) && c.kind == ChannelType::Voice {
-            c.delete(&client.cache_and_http.http)
-                .await
-                .expect("delete failed");
-        }
-    }
-
-    let last_channel_id = guild
-        .create_channel(&client.cache_and_http.http, channel_creator(0))
-        .await
-        .expect("cannot create channel")
-        .id;
-    {
-        let mut data = client.data.write().await;
-
-        data.insert::<VoiceChat>(VoiceChatData {
-            next_channel_id: 1,
-            last_channel_id,
-        });
-    }
-
-    let cache_and_http = Arc::clone(&client.cache_and_http);
-    tokio::spawn(async move {
-        loop {
-            for (_id, c) in guild
-                .channels(&cache_and_http.http)
-                .await
-                .expect("cannot get channels")
-                .iter()
-            {
-                if c.category_id == Some(ChannelId(941469281730838578))
-                    && c.kind == ChannelType::Voice
-                {
-                    match c.members(&cache_and_http.cache).await {
-                        Ok(members) => {
-                            if members.is_empty() {
-                                c.delete(&cache_and_http.http).await.expect("delete failed");
-                            }
-                        }
-                        Err(_) => {
-                            todo!()
-                        }
-                    }
-                }
-            }
-
-            tokio::time::sleep(time::Duration::from_secs(600)).await;
-        }
-    });
+    let voice_manager = VoiceManager::new(&client);
 
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
