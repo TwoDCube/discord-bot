@@ -7,7 +7,7 @@ use serenity::model::id::{ChannelId, GuildId};
 use serenity::model::voice::VoiceState;
 use serenity::{async_trait, Client, model::gateway::Ready};
 use serenity::client::{Context, EventHandler};
-use serenity::prelude::{SerenityError};
+use serenity::prelude::{SerenityError, TypeMapKey};
 use crate::voice_manager::{VoiceManager, VoiceChat};
 
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +19,15 @@ enum HandlerError {
 }
 
 struct Handler;
+
+pub struct SingletonData<'a> {
+    pub voice_manager: VoiceManager<'a>
+}
+pub struct Singletons;
+
+impl<'a> TypeMapKey for Singletons {
+    type Value = SingletonData<'a>;
+}
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -108,6 +117,12 @@ async fn main() {
         .expect("Err creating client");
 
     let voice_manager = VoiceManager::new(&client).await;
+    {
+        let mut data = client.data.write().await;
+        data.insert::<Singletons>(SingletonData{
+            voice_manager
+        })
+    }
 
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
