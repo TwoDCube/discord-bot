@@ -5,7 +5,7 @@ use serenity::model::channel::{Channel, ChannelType};
 
 use serenity::builder::CreateChannel;
 use serenity::model::guild::Guild;
-use serenity::model::id::{ChannelId, GuildId};
+use serenity::model::id::ChannelId;
 use serenity::model::voice::VoiceState;
 use serenity::{async_trait, model::gateway::Ready, prelude::*};
 
@@ -13,8 +13,6 @@ use serenity::{async_trait, model::gateway::Ready, prelude::*};
 enum HandlerError {
     #[error("some serenity error")]
     SerenityError(#[from] SerenityError),
-    #[error("something else: {0}")]
-    SomethingElse(String),
 }
 
 struct VoiceChatData {
@@ -41,26 +39,24 @@ impl EventHandler for Handler {
         println!("{} is connected!", ready.user.name);
     }
 
-    async fn voice_state_update(
-        &self,
-        ctx: Context,
-        guild: Option<GuildId>,
-        old: Option<VoiceState>,
-        new: VoiceState,
-    ) {
+    async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         let result = || async {
             if old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id {
                 if let Some(channel_id) = new.channel_id {
-                    if let Channel::Guild(_) = channel_id.to_channel(&ctx.http).await? {
+                    if let Channel::Guild(_) = channel_id.to_channel((&ctx.cache, ctx.http.as_ref())).await? {
                         let mut data = ctx.data.write().await;
                         let voice_data = data
                             .get_mut::<VoiceChat>()
                             .expect("somehow didn't find, developer is stupid");
 
                         if voice_data.last_channel_id == channel_id {
-                            let channel = guild
+                            let channel = new
+                                .guild_id
                                 .unwrap()
-                                .create_channel(&ctx.http, channel_creator(voice_data.next_channel_id))
+                                .create_channel(
+                                    (&ctx.cache, ctx.http.as_ref()),
+                                    channel_creator(voice_data.next_channel_id),
+                                )
                                 .await?;
 
                             println!("joined");
@@ -76,15 +72,15 @@ impl EventHandler for Handler {
                 ..
             }) = old
             {
-                if let Channel::Guild(gc) = channel_id.to_channel(&ctx.http).await? {
-                    if gc.category_id != Some(ChannelId(941469281730838578)) {
+                if let Channel::Guild(gc) = channel_id.to_channel((&ctx.cache, ctx.http.as_ref())).await? {
+                    if gc.parent_id != Some(ChannelId::new(941469281730838578)) {
                         return Ok(());
                     }
 
-                    let members = gc.members(&ctx.cache).await?;
+                    let members = gc.members(&ctx.cache)?;
 
                     if members.is_empty() {
-                        gc.delete(&ctx.http).await?;
+                        gc.delete((&ctx.cache, ctx.http.as_ref())).await?;
                         println!("removed");
                     }
                 }
@@ -98,42 +94,38 @@ impl EventHandler for Handler {
     }
 }
 
-fn channel_creator(id: u128) -> impl FnOnce(&mut CreateChannel) -> &mut CreateChannel {
-    move |c| {
-        c.name(format!("Voice - {}", id))
-            .kind(ChannelType::Voice)
-            .category(941469281730838578)
-            .bitrate(128000)
-    }
+fn channel_creator<'a>(id: u128) -> CreateChannel<'a> {
+    CreateChannel::new(format!("Voice - {id}"))
+        .kind(ChannelType::Voice)
+        .category(941469281730838578)
+        .bitrate(128000)
 }
 
 #[tokio::main]
 async fn main() {
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let mut client = Client::builder(&token)
+    let mut client = Client::builder(&token, GatewayIntents::GUILDS)
         .event_handler(Handler)
         .await
         .expect("Err creating client");
 
-    let guild = Guild::get(&client.cache_and_http.http, 941431307269963877)
+    let guild = Guild::get((&client.cache, client.http.as_ref()), 941431307269963877)
         .await
         .expect("cannot get guild");
     for (_id, c) in guild
-        .channels(&client.cache_and_http.http)
+        .channels((&client.cache, client.http.as_ref()))
         .await
         .expect("cannot get channels")
         .iter()
     {
-        if c.category_id == Some(ChannelId(941469281730838578)) && c.kind == ChannelType::Voice {
-            c.delete(&client.cache_and_http.http)
-                .await
-                .expect("delete failed");
+        if c.parent_id == Some(ChannelId::new(941469281730838578)) && c.kind == ChannelType::Voice {
+            c.delete((&client.cache, client.http.as_ref())).await.expect("delete failed");
         }
     }
 
     let last_channel_id = guild
-        .create_channel(&client.cache_and_http.http, channel_creator(0))
+        .create_channel((&client.cache, client.http.as_ref()), channel_creator(0))
         .await
         .expect("cannot create channel")
         .id;
@@ -146,22 +138,23 @@ async fn main() {
         });
     }
 
-    let cache_and_http = Arc::clone(&client.cache_and_http);
+    let http = Arc::clone(&client.http);
+    let cache = Arc::clone(&client.cache);
     tokio::spawn(async move {
         loop {
             for (_id, c) in guild
-                .channels(&cache_and_http.http)
+                .channels((&cache, http.as_ref()))
                 .await
                 .expect("cannot get channels")
                 .iter()
             {
-                if c.category_id == Some(ChannelId(941469281730838578))
+                if c.parent_id == Some(ChannelId::new(941469281730838578))
                     && c.kind == ChannelType::Voice
                 {
-                    match c.members(&cache_and_http.cache).await {
+                    match c.members(&cache) {
                         Ok(members) => {
                             if members.is_empty() {
-                                c.delete(&cache_and_http.http).await.expect("delete failed");
+                                c.delete((&cache, http.as_ref())).await.expect("delete failed");
                             }
                         }
                         Err(_) => {
