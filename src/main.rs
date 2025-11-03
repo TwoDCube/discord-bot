@@ -43,7 +43,7 @@ impl EventHandler for Handler {
         let result = || async {
             if old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id {
                 if let Some(channel_id) = new.channel_id {
-                    if let Channel::Guild(_) = channel_id.to_channel(&ctx.http).await? {
+                    if let Channel::Guild(_) = channel_id.to_channel((&ctx.cache, ctx.http.as_ref())).await? {
                         let mut data = ctx.data.write().await;
                         let voice_data = data
                             .get_mut::<VoiceChat>()
@@ -54,7 +54,7 @@ impl EventHandler for Handler {
                                 .guild_id
                                 .unwrap()
                                 .create_channel(
-                                    &ctx.http,
+                                    (&ctx.cache, ctx.http.as_ref()),
                                     channel_creator(voice_data.next_channel_id),
                                 )
                                 .await?;
@@ -72,7 +72,7 @@ impl EventHandler for Handler {
                 ..
             }) = old
             {
-                if let Channel::Guild(gc) = channel_id.to_channel(&ctx.http).await? {
+                if let Channel::Guild(gc) = channel_id.to_channel((&ctx.cache, ctx.http.as_ref())).await? {
                     if gc.parent_id != Some(ChannelId::new(941469281730838578)) {
                         return Ok(());
                     }
@@ -80,7 +80,7 @@ impl EventHandler for Handler {
                     let members = gc.members(&ctx.cache)?;
 
                     if members.is_empty() {
-                        gc.delete(&ctx.http).await?;
+                        gc.delete((&ctx.cache, ctx.http.as_ref())).await?;
                         println!("removed");
                     }
                 }
@@ -110,17 +110,17 @@ async fn main() {
         .await
         .expect("Err creating client");
 
-    let guild = Guild::get(&client.http, 941431307269963877)
+    let guild = Guild::get((&client.cache, client.http.as_ref()), 941431307269963877)
         .await
         .expect("cannot get guild");
     for (_id, c) in guild
-        .channels(&client.http)
+        .channels((&client.cache, client.http.as_ref()))
         .await
         .expect("cannot get channels")
         .iter()
     {
         if c.parent_id == Some(ChannelId::new(941469281730838578)) && c.kind == ChannelType::Voice {
-            c.delete(&client.http).await.expect("delete failed");
+            c.delete((&client.cache, client.http.as_ref())).await.expect("delete failed");
         }
     }
 
@@ -143,7 +143,7 @@ async fn main() {
     tokio::spawn(async move {
         loop {
             for (_id, c) in guild
-                .channels(&http)
+                .channels((&cache, http.as_ref()))
                 .await
                 .expect("cannot get channels")
                 .iter()
@@ -154,7 +154,7 @@ async fn main() {
                     match c.members(&cache) {
                         Ok(members) => {
                             if members.is_empty() {
-                                c.delete(&http).await.expect("delete failed");
+                                c.delete((&cache, http.as_ref())).await.expect("delete failed");
                             }
                         }
                         Err(_) => {
