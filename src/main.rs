@@ -81,7 +81,7 @@ impl EventHandler for Handler {
             .id;
 
         let mut data = ctx.data.write().await;
-        data.insert::<VoiceChat>(VoiceChatData{
+        data.insert::<VoiceChat>(VoiceChatData {
             next_channel_id: new_number + 1,
             last_channel_id,
         });
