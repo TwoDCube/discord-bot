@@ -1,0 +1,86 @@
+name: CI
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+on: [push]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install stable rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Restore build & cargo caches
+        uses: Swatinem/rust-cache@v1
+      - name: Build
+        run: cargo build --locked --workspace
+
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install stable rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install stable rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Restore build & cargo caches
+        uses: Swatinem/rust-cache@v1
+      - name: Check lints
+        run: cargo clippy --workspace --locked -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    container: rust:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install stable rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Restore build & cargo caches
+        uses: Swatinem/rust-cache@v1
+      - name: Build
+        run: cargo test --workspace
+
+  cargo-deny:
+    name: cargo-deny check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        checks:
+          - advisories
+          - bans licenses sources
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Run cargo-deny check {{ matrix.checks }}
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check ${{ matrix.checks }}
