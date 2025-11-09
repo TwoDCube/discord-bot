@@ -7,7 +7,7 @@ RUN curl --proto '=https' --tlsv1.3 -sSf https://sh.rustup.rs > rustup-init.sh &
 
 ENV PATH="$PATH:/root/.cargo/bin"
 
-RUN cargo install cargo-chef --locked --version "0.1.67" && \
+RUN cargo install cargo-chef --locked --version "0.1.73" && \
     rm -rf $CARGO_HOME/registry/
 
 
