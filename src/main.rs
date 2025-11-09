@@ -58,14 +58,13 @@ impl EventHandler for Handler {
             .await
             .expect("cannot create channel")
             .id;
-        {
-            let mut data = ctx.data.write().await;
 
-            data.insert::<VoiceChat>(VoiceChatData {
-                next_channel_id: 1,
-                last_channel_id,
-            });
-        }
+        let mut data = ctx.data.write().await;
+
+        data.insert::<VoiceChat>(VoiceChatData {
+            next_channel_id: 1,
+            last_channel_id,
+        });
     }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
