@@ -89,32 +89,30 @@ impl EventHandler for Handler {
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
         let result = || async {
-            if old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id {
-                if let Some(channel_id) = new.channel_id {
-                    if let Channel::Guild(_) = channel_id
-                        .to_channel((&ctx.cache, ctx.http.as_ref()))
-                        .await?
-                    {
-                        let mut data = ctx.data.write().await;
-                        let voice_data = data
-                            .get_mut::<VoiceChat>()
-                            .expect("somehow didn't find, developer is stupid");
+            if (old.is_none() || old.as_ref().unwrap().channel_id != new.channel_id)
+                && let Some(channel_id) = new.channel_id
+                && let Channel::Guild(_) = channel_id
+                    .to_channel((&ctx.cache, ctx.http.as_ref()))
+                    .await?
+            {
+                let mut data = ctx.data.write().await;
+                let voice_data = data
+                    .get_mut::<VoiceChat>()
+                    .expect("somehow didn't find, developer is stupid");
 
-                        if voice_data.last_channel_id == channel_id {
-                            let channel = new
-                                .guild_id
-                                .unwrap()
-                                .create_channel(
-                                    (&ctx.cache, ctx.http.as_ref()),
-                                    channel_creator(voice_data.next_channel_id),
-                                )
-                                .await?;
+                if voice_data.last_channel_id == channel_id {
+                    let channel = new
+                        .guild_id
+                        .unwrap()
+                        .create_channel(
+                            (&ctx.cache, ctx.http.as_ref()),
+                            channel_creator(voice_data.next_channel_id),
+                        )
+                        .await?;
 
-                            println!("joined");
-                            voice_data.next_channel_id += 1;
-                            voice_data.last_channel_id = channel.id;
-                        }
-                    }
+                    println!("joined");
+                    voice_data.next_channel_id += 1;
+                    voice_data.last_channel_id = channel.id;
                 }
             }
 
@@ -122,21 +120,19 @@ impl EventHandler for Handler {
                 channel_id: Some(channel_id),
                 ..
             }) = old
-            {
-                if let Channel::Guild(gc) = channel_id
+                && let Channel::Guild(gc) = channel_id
                     .to_channel((&ctx.cache, ctx.http.as_ref()))
                     .await?
-                {
-                    if gc.parent_id != Some(VOICE_CHANNELS_CATEGORY_ID) {
-                        return Ok(());
-                    }
+            {
+                if gc.parent_id != Some(VOICE_CHANNELS_CATEGORY_ID) {
+                    return Ok(());
+                }
 
-                    let members = gc.members(&ctx.cache)?;
+                let members = gc.members(&ctx.cache)?;
 
-                    if members.is_empty() {
-                        gc.delete((&ctx.cache, ctx.http.as_ref())).await?;
-                        println!("removed");
-                    }
+                if members.is_empty() {
+                    gc.delete((&ctx.cache, ctx.http.as_ref())).await?;
+                    println!("removed");
                 }
             }
             Ok::<_, HandlerError>(())
