@@ -8,6 +8,7 @@ use serenity::model::voice::VoiceState;
 use serenity::{async_trait, model::gateway::Ready, prelude::*};
 
 const VOICE_CHANNELS_CATEGORY_ID: ChannelId = ChannelId::new(941469281730838578);
+const VOICE_CHANNEL_NAME_PREFIX: &str = "Voice - ";
 
 #[derive(Debug, thiserror::Error)]
 enum HandlerError {
@@ -40,31 +41,52 @@ impl EventHandler for Handler {
     }
 
     async fn guild_create(&self, ctx: Context, guild: Guild, _is_new: Option<bool>) {
+        let mut existing_chat_data: Option<VoiceChatData> = None;
+
         for (_id, c) in guild
             .channels(&ctx.http)
             .await
             .expect("cannot get channels")
             .iter()
         {
-            if c.parent_id == Some(VOICE_CHANNELS_CATEGORY_ID) && c.kind == ChannelType::Voice {
+            if c.parent_id != Some(VOICE_CHANNELS_CATEGORY_ID) || c.kind != ChannelType::Voice {
+                continue;
+            }
+
+            if c.members(&ctx.cache).unwrap().is_empty() {
                 c.delete((&ctx.cache, ctx.http.as_ref()))
                     .await
                     .expect("delete failed");
+            } else {
+                if let Some(number) = c.name().strip_prefix(VOICE_CHANNEL_NAME_PREFIX)
+                    && let Ok(number) = number.parse::<u128>()
+                    && existing_chat_data
+                        .as_ref()
+                        .is_some_and(|c| number + 1 > c.next_channel_id)
+                {
+                    existing_chat_data = Some(VoiceChatData {
+                        next_channel_id: number + 1,
+                        last_channel_id: c.id,
+                    });
+                };
             }
         }
 
-        let last_channel_id = guild
-            .create_channel((&ctx.cache, ctx.http.as_ref()), channel_creator(0))
-            .await
-            .expect("cannot create channel")
-            .id;
+        if existing_chat_data.is_none() {
+            let last_channel_id = guild
+                .create_channel((&ctx.cache, ctx.http.as_ref()), channel_creator(0))
+                .await
+                .expect("cannot create channel")
+                .id;
+
+            existing_chat_data = Some(VoiceChatData {
+                next_channel_id: 1,
+                last_channel_id,
+            });
+        }
 
         let mut data = ctx.data.write().await;
-
-        data.insert::<VoiceChat>(VoiceChatData {
-            next_channel_id: 1,
-            last_channel_id,
-        });
+        data.insert::<VoiceChat>(existing_chat_data.unwrap());
     }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
@@ -129,7 +151,7 @@ impl EventHandler for Handler {
 }
 
 fn channel_creator<'a>(id: u128) -> CreateChannel<'a> {
-    CreateChannel::new(format!("Voice - {id}"))
+    CreateChannel::new(format!("{VOICE_CHANNEL_NAME_PREFIX}{id}"))
         .kind(ChannelType::Voice)
         .category(VOICE_CHANNELS_CATEGORY_ID)
         .bitrate(128000)
