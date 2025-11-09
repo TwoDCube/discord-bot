@@ -57,18 +57,26 @@ impl EventHandler for Handler {
                 c.delete((&ctx.cache, ctx.http.as_ref()))
                     .await
                     .expect("delete failed");
-            } else {
-                if let Some(number) = c.name().strip_prefix(VOICE_CHANNEL_NAME_PREFIX)
-                    && let Ok(number) = number.parse::<u128>()
-                    && existing_chat_data
-                        .as_ref()
-                        .is_some_and(|c| number + 1 > c.next_channel_id)
-                {
-                    existing_chat_data = Some(VoiceChatData {
-                        next_channel_id: number + 1,
-                        last_channel_id: c.id,
-                    });
-                };
+                continue;
+            }
+
+            let Some(Ok(number)) = c
+                .name()
+                .strip_prefix(VOICE_CHANNEL_NAME_PREFIX)
+                .map(|n| n.parse::<u128>())
+            else {
+                continue;
+            };
+
+            if existing_chat_data.is_none()
+                || existing_chat_data
+                    .as_ref()
+                    .is_some_and(|c| number + 1 > c.next_channel_id)
+            {
+                existing_chat_data = Some(VoiceChatData {
+                    next_channel_id: number + 1,
+                    last_channel_id: c.id,
+                });
             }
         }
 
