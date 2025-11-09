@@ -16,7 +16,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Buildah Action
+      - name: Build image
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
@@ -25,7 +25,7 @@ jobs:
           containerfiles: ./Containerfile
           oci: true
 
-      - name: Push To quay.io
+      - name: Push image
         id: push-image
         uses: redhat-actions/push-to-registry@v2
         with:
@@ -35,5 +35,5 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Print image url
+      - name: Print image URL
         run: echo "Image pushed to ${{ steps.push-image.outputs.registry-paths }}"
