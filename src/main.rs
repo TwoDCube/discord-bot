@@ -41,7 +41,7 @@ impl EventHandler for Handler {
     }
 
     async fn guild_create(&self, ctx: Context, guild: Guild, _is_new: Option<bool>) {
-        let mut existing_chat_data: Option<VoiceChatData> = None;
+        let mut largest_number: Option<u128> = None;
 
         for (_id, c) in guild
             .channels(&ctx.http)
@@ -68,33 +68,23 @@ impl EventHandler for Handler {
                 continue;
             };
 
-            if existing_chat_data.is_none()
-                || existing_chat_data
-                    .as_ref()
-                    .is_some_and(|c| number + 1 > c.next_channel_id)
-            {
-                existing_chat_data = Some(VoiceChatData {
-                    next_channel_id: number + 1,
-                    last_channel_id: c.id,
-                });
-            }
+            largest_number.get_or_insert(number);
+            largest_number.map(|n| n.max(number));
         }
 
-        if existing_chat_data.is_none() {
-            let last_channel_id = guild
-                .create_channel((&ctx.cache, ctx.http.as_ref()), channel_creator(0))
-                .await
-                .expect("cannot create channel")
-                .id;
+        let new_number = largest_number.map(|n| n + 1).unwrap_or(0);
 
-            existing_chat_data = Some(VoiceChatData {
-                next_channel_id: 1,
-                last_channel_id,
-            });
-        }
+        let last_channel_id = guild
+            .create_channel((&ctx.cache, ctx.http.as_ref()), channel_creator(new_number))
+            .await
+            .expect("cannot create channel")
+            .id;
 
         let mut data = ctx.data.write().await;
-        data.insert::<VoiceChat>(existing_chat_data.unwrap());
+        data.insert::<VoiceChat>(VoiceChatData{
+            next_channel_id: new_number + 1,
+            last_channel_id,
+        });
     }
 
     async fn voice_state_update(&self, ctx: Context, old: Option<VoiceState>, new: VoiceState) {
