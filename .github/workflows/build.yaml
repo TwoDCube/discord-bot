@@ -39,7 +39,7 @@ jobs:
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}
-          registry: docker://ghcr.io/twodcube-home
+          registry: ghcr.io/twodcube-home
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
