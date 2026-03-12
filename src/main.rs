@@ -2,7 +2,7 @@ use std::env;
 
 use serenity::builder::CreateChannel;
 use serenity::model::channel::{Channel, ChannelType};
-use serenity::model::guild::Guild;
+use serenity::model::guild::{Guild, PremiumTier};
 use serenity::model::id::ChannelId;
 use serenity::model::voice::VoiceState;
 use serenity::{async_trait, model::gateway::Ready, prelude::*};
@@ -73,9 +73,10 @@ impl EventHandler for Handler {
         }
 
         let new_number = largest_number.map(|n| n + 1).unwrap_or(0);
+        let bitrate = max_bitrate(guild.premium_tier, &guild.features);
 
         let last_channel_id = guild
-            .create_channel((&ctx.cache, ctx.http.as_ref()), channel_creator(new_number))
+            .create_channel((&ctx.cache, ctx.http.as_ref()), channel_creator(new_number, bitrate))
             .await
             .expect("cannot create channel")
             .id;
@@ -101,12 +102,13 @@ impl EventHandler for Handler {
                     .expect("somehow didn't find, developer is stupid");
 
                 if voice_data.last_channel_id == channel_id {
-                    let channel = new
-                        .guild_id
-                        .unwrap()
+                    let guild_id = new.guild_id.unwrap();
+                    let guild = Guild::get((&ctx.cache, ctx.http.as_ref()), guild_id).await?;
+                    let bitrate = max_bitrate(guild.premium_tier, &guild.features);
+                    let channel = guild_id
                         .create_channel(
                             (&ctx.cache, ctx.http.as_ref()),
-                            channel_creator(voice_data.next_channel_id),
+                            channel_creator(voice_data.next_channel_id, bitrate),
                         )
                         .await?;
 
@@ -144,11 +146,23 @@ impl EventHandler for Handler {
     }
 }
 
-fn channel_creator<'a>(id: u128) -> CreateChannel<'a> {
+fn max_bitrate(premium_tier: PremiumTier, features: &[String]) -> u32 {
+    if features.iter().any(|f| f == "VIP_REGIONS") {
+        return 384_000;
+    }
+    match premium_tier {
+        PremiumTier::Tier3 => 384_000,
+        PremiumTier::Tier2 => 256_000,
+        PremiumTier::Tier1 => 128_000,
+        _ => 96_000,
+    }
+}
+
+fn channel_creator<'a>(id: u128, bitrate: u32) -> CreateChannel<'a> {
     CreateChannel::new(format!("{VOICE_CHANNEL_NAME_PREFIX}{id}"))
         .kind(ChannelType::Voice)
         .category(VOICE_CHANNELS_CATEGORY_ID)
-        .bitrate(128000)
+        .bitrate(bitrate)
 }
 
 #[tokio::main]
