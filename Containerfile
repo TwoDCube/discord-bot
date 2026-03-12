@@ -1,13 +1,13 @@
 FROM registry.access.redhat.com/ubi9/ubi as chef
 
 RUN curl --proto '=https' --tlsv1.3 -sSf https://sh.rustup.rs > rustup-init.sh && \
-    sh rustup-init.sh --default-toolchain "1.90" --profile minimal -y && \
+    sh rustup-init.sh --default-toolchain "1.94" --profile minimal -y && \
     source "$HOME/.bashrc" && \
     dnf install clang -y
 
 ENV PATH="$PATH:/root/.cargo/bin"
 
-RUN cargo install cargo-chef --locked --version "0.1.73" && \
+RUN cargo install cargo-chef --locked --version "0.1.77" && \
     rm -rf $CARGO_HOME/registry/
 
 
