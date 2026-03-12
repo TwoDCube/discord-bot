@@ -2,6 +2,7 @@ name: CD
 
 permissions:
   contents: read
+  packages: write
 
 on:
   push:
@@ -20,7 +21,7 @@ jobs:
         id: build-image
         uses: redhat-actions/buildah-build@v2
         with:
-          image: ghcr.io/twodcube-home/discord-bot
+          image: discord-bot
           tags: latest ${{ github.sha }}
           containerfiles: ./Containerfile
           oci: true
