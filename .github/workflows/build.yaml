@@ -17,6 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Login to GHCR
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build image
         id: build-image
         uses: redhat-actions/buildah-build@v2
