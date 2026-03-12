@@ -76,7 +76,10 @@ impl EventHandler for Handler {
         let bitrate = max_bitrate(guild.premium_tier, &guild.features);
 
         let last_channel_id = guild
-            .create_channel((&ctx.cache, ctx.http.as_ref()), channel_creator(new_number, bitrate))
+            .create_channel(
+                (&ctx.cache, ctx.http.as_ref()),
+                channel_creator(new_number, bitrate),
+            )
             .await
             .expect("cannot create channel")
             .id;
